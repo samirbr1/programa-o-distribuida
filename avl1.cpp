@@ -40,7 +40,7 @@ int main(int argc, char *argv[])
      
     
     
-    for(int i = num/2; i > 0; i = i >> 1)
+    for(int i = (log2(num) + 1); i > 0; i = i >> 1)
     {
         for(int j = 0; j < num; j = j + pow(2, i))
             printf("[%d -> %d]", j, j+i);
