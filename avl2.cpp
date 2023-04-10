@@ -2,7 +2,7 @@
             Disciplina: Tópicos Avançados em Computação III
             Curso: Engenharia de Computação - UFGD - FACET
             Atividade Avaliativa 1
-            Implementação do algoritmo one-to-all broadcast para a topologia de dispersão linear e hipercubo
+            Implementação de programação paralela para controle de aeroportos
             Docente: Rodrigo Porfírio da Silva Sacchi
             
             Discentes:
@@ -70,6 +70,8 @@ int main(int argc, char* argv[])
                 scanf("%d", &origem);
             }
         }
+        if(rank != 0)
+            MPI_Recv(&opt, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
         MPI_Barrier(MPI_COMM_WORLD);
 
