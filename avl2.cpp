@@ -20,7 +20,7 @@
 
 //structs usadas
 struct Voo{
-    int voo_id;
+    int voo_id = -1;
     int origem;
     int destino;
     int chegada_partida;
@@ -47,8 +47,9 @@ int main(int argc, char* argv[])
     int size, rank;
     int opt = -1;
     Voo voo;
+    Voo aux;
     
-    int vooId, origem, destino, chegada_partida, tempo_voo;
+    int origem, destino, chegada_partida, tempo_voo;
 
     MPI_Status status;
     MPI_Init(&argc, &argv);
@@ -59,7 +60,7 @@ int main(int argc, char* argv[])
 
     while(opt != 3)
     {
-	destino = -1;
+	    destino = -1;
         if(rank == 0)
         {
             menu();
@@ -74,56 +75,76 @@ int main(int argc, char* argv[])
                }
             }
         }
-	MPI_Bcast(&opt, 1, MPI_INT, 0, MPI_COMM_WORLD);
+	    MPI_Bcast(&opt, 1, MPI_INT, 0, MPI_COMM_WORLD);
         MPI_Bcast(&origem, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
         switch(opt)
         {
             case 1:
-                if(rank == origem)
+                if(rank == 0)
                 {
-                    aeroporto.numDecolagens++;
                     do
                     {
                         printf("Informe o destino:\n");
                         scanf("%d", &destino);
                     }while(destino == origem || destino < 0 || destino >= size);
-                    fflush(stdin);
                     do
                     {
-		        printf("Informe o horario de partida:\n");
-		        scanf("%d", &chegada_partida);
+		                printf("Informe o horario de partida:\n");
+		                scanf("%d", &chegada_partida);
 		    }while(chegada_partida < 0 || chegada_partida >= 24);
-		    fflush(stdin);
-		    do
-		    {
+
+		            do  
+		            {
                         printf("Informe o tempo previsto de voo:\n");
                         scanf("%d", &tempo_voo);
                     }while(tempo_voo <= 0);
-                    vooId = vooId*100 + aeroporto.numDecolagens;
-            	    voo = {vooId, origem, destino, chegada_partida, tempo_voo};
+                    voo = {-1, origem, destino, chegada_partida, tempo_voo};
                     MPI_Send(&voo, sizeof(Voo), MPI_BYTE, destino, 0, MPI_COMM_WORLD);
-                    aeroporto.decolagens.push_back(voo);
+
+                    //vooId = vooId*100 + aeroporto.numDecolagens;
+            	    
+                    
+                    //aeroporto.decolagens.push_back(voo);
+                    MPI_Send(&voo, sizeof(Voo), MPI_BYTE, origem, 0, MPI_COMM_WORLD);
                 }
-		MPI_Bcast(&destino, 1, MPI_INT, origem, MPI_COMM_WORLD);
+
+		
+                if(rank == origem)
+                {
+                    MPI_Recv(&voo, sizeof(Voo), MPI_BYTE, 0, 0, MPI_COMM_WORLD, &status);
+   		            aeroporto.numDecolagens++;
+                    voo.voo_id = rank * 100 + aeroporto.numDecolagens;
+                    aeroporto.decolagens.push_back(voo);
+
+                    
+                    aeroporto.numPousos++;
+                    //tratar colisões aqui
+                    if(aeroporto.numPousos == 2 || aeroporto.numDecolagens == 2)
+                        for(int i = 0; i < sizeof(voo); i++)
+                    if(aeroporto.numPousos == 1 && aeroporto.numDecolagens == 1)
+                        for(int i = 0; i < sizeof(voo); i++)
+                    aeroporto.pousos.push_back(voo);
+                }
                 if(rank == destino)
                 {
                     MPI_Recv(&voo, sizeof(Voo), MPI_BYTE, origem, 0, MPI_COMM_WORLD, &status);
-   		    voo.chegada_partida += voo.tempo_voo;
+                    voo.chegada_partida += voo.tempo_voo;
                     if(voo.chegada_partida >= 24)
                     {
                         printf("Pouso agendado para o dia seguinte.\n");
                         break;
                     }
+                    
+
                     aeroporto.numPousos++;
-                    //tratar colisões aqui
                     aeroporto.pousos.push_back(voo);
                 }
                 break;
             case 2:
                 if(rank == origem)
                     tabela(&aeroporto);
-		MPI_Barrier(MPI_COMM_WORLD); //para não atrapalhar o ptint de outros processos que não seja o 0
+		        MPI_Barrier(MPI_COMM_WORLD); //para não atrapalhar o ptint de outros processos que não seja o 0
                 break;
             case 3:
                 if(rank == 0)
@@ -164,4 +185,3 @@ void tabela(const Aeroporto* aero){
     }
     printf("---------------------------------------------------------\n");
 }
-
