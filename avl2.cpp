@@ -11,16 +11,14 @@
 */
 
 //inclusão de bibliotecas
-#include <stdio.h> 
-#include <time.h>
+#include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
 #include <vector>
 #include "mpi.h"
 
 //structs usadas
 struct Voo{
-    int voo_id;
+    int voo_id = -1;
     int origem;
     int destino;
     int chegada_partida;
@@ -47,10 +45,11 @@ int main(int argc, char* argv[])
     int size, rank;
     int opt = -1;
     Voo voo;
-    
-    int voo_id, origem, destino, chegada_partida, tempo_voo;
+    int aux;
+    int origem, destino, chegada_partida, tempo_voo;
 
     MPI_Status status;
+    MPI_Request request = MPI_REQUEST_NULL;
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -59,6 +58,7 @@ int main(int argc, char* argv[])
 
     while(opt != 3)
     {
+	destino = -1;
         if(rank == 0)
         {
             menu();
@@ -79,36 +79,132 @@ int main(int argc, char* argv[])
         switch(opt)
         {
             case 1:
+                if(rank == 0)
+                {
+                    do
+                    {
+                        printf("Informe o destino:\n");
+                        scanf("%d", &destino);
+                    }while(destino == origem || destino < 0 || destino >= size);
+                    do
+                    {
+		        printf("Informe o horario de partida:\n");
+		        scanf("%d", &chegada_partida);
+		    }while(chegada_partida < 0 || chegada_partida >= 24);
+
+		    do
+		    {
+                        printf("Informe o tempo previsto de voo:\n");
+                        scanf("%d", &tempo_voo);
+                    }while(tempo_voo <= 0);
+
+                    voo = {-1, origem, destino, chegada_partida, tempo_voo};
+
+                    MPI_Isend(&voo, sizeof(Voo), MPI_BYTE, origem, 0, MPI_COMM_WORLD, &request);
+                }
+		MPI_Bcast(&destino, 1, MPI_INT, 0, MPI_COMM_WORLD);
                 if(rank == origem)
                 {
-                    fflush(stdin);
-                    aeroporto.numDecolagens++;
-                    printf("Informe o destino:\n");
-                    scanf("%d", &destino);
-                    fflush(stdin);
-		    printf("Informe o horario de partida:\n");
-		    scanf("%d", &chegada_partida);
-		    fflush(stdin);
-                    printf("Informe o tempo previsto de voo:\n");
-                    scanf("%d", &tempo_voo);
-                    voo_id = rank*100 + aeroporto.numDecolagens;
-                    voo = {voo_id, origem, destino, chegada_partida, tempo_voo};
-                    MPI_Send(&voo, sizeof(Voo), MPI_BYTE, destino, 0, MPI_COMM_WORLD);
-                    aeroporto.decolagens.push_back(voo);
+                    MPI_Recv(&voo, sizeof(Voo), MPI_BYTE, 0, 0, MPI_COMM_WORLD, &status);
+   		    aeroporto.numDecolagens++;
+                    voo.voo_id = rank * 100 + aeroporto.numDecolagens;
+		    aeroporto.decolagens.push_back(voo);
+                    MPI_Send(&voo, sizeof(Voo), MPI_BYTE, destino, 1, MPI_COMM_WORLD);
+                    aux = aeroporto.numDecolagens - 1; //ultimo elemento inserido
+                    for(int i = 0; i < aeroporto.numDecolagens; i++)
+                    {
+                        if(i == aux)
+                            break;
+                        if(aeroporto.decolagens[i].chegada_partida == aeroporto.decolagens[aux].chegada_partida)
+                        {
+                            printf("Duas decolagens simultaneas! Priorizando o de maior tempo de voo...\n");
+                            if(aeroporto.decolagens[aux].tempo_voo > aeroporto.decolagens[i].tempo_voo)
+                            {
+                                aeroporto.decolagens[i].chegada_partida++;
+                                printf("Voo de id %d foi adiado devido a outra decolagem de maior prioridade!\n", aeroporto.decolagens[i].voo_id);
+                                aux = i; //verifica se há outros conflitos com o novo horário
+                            }
+                            else
+                            {
+                                aeroporto.decolagens[aux].chegada_partida++;
+				printf("Voo de id %d adiado devido a outra decolagem de maior prioridade!\n", aeroporto.decolagens[aux].voo_id);
+                            }
+                            i = 0;
+                        }
+                    }
                 }
-		MPI_Bcast(&destino, 1, MPI_INT, origem, MPI_COMM_WORLD);
                 if(rank == destino)
                 {
-                    aeroporto.numPousos++;
-                    MPI_Recv(&voo, sizeof(Voo), MPI_BYTE, origem, 0, MPI_COMM_WORLD, &status);
+                    MPI_Recv(&voo, sizeof(Voo), MPI_BYTE, origem, 1, MPI_COMM_WORLD, &status);
                     voo.chegada_partida += voo.tempo_voo;
-                    //tratar colisões aqui
+                    if(voo.chegada_partida >= 24)
+                    {
+                        printf("Pouso agendado para o dia seguinte.\n");
+                        break;
+                    }
+                    aeroporto.numPousos++;
                     aeroporto.pousos.push_back(voo);
+                    aux = aeroporto.numPousos - 1;
+                    for(int i = 0; i < aeroporto.numDecolagens; i++) //verifica conflito de voo com decolagem
+                    {
+			if(aux == i)
+			    break;
+                        if(aeroporto.decolagens[i].chegada_partida == aeroporto.pousos[aux].chegada_partida)
+                        {
+                            aeroporto.decolagens[i].chegada_partida++;
+                            aux = i;
+                            for(int j = 0; j < aeroporto.numDecolagens; j++)
+                            {
+                                if(aux == j)
+                                    break;
+                                if(aeroporto.decolagens[j].chegada_partida == aeroporto.decolagens[aux].chegada_partida){
+                                    printf("Decolagem sera adiado por causa de um pouso!\n");
+                                    if(aeroporto.decolagens[aux].tempo_voo > aeroporto.decolagens[j].tempo_voo)
+                                    {
+                                        aeroporto.decolagens[j].chegada_partida++;
+                                        printf("Voo %d adiado devido a uma decolagem de maior prioridade", aeroporto.decolagens[j].voo_id);
+                                        aux = j;
+                                    }
+                                    else
+                                    {
+                                        aeroporto.decolagens[aux].chegada_partida++;
+                                        printf("Voo %d adiado devido a uma decolagem de maior prioridade", aeroporto.decolagens[aux].voo_id);
+                                    }
+                                    j = 0;
+                                }
+                            }
+                        }
+                    }
+                    aux = aeroporto.numPousos - 1;
+                    for(int i = 0; i < aeroporto.numPousos; i++) //Verifica conflitos de pousos
+	 	    {
+                        if(i == aux)
+                            break;
+                        if(aeroporto.pousos[i].chegada_partida == aeroporto.pousos[aux].chegada_partida)
+                        {
+                            printf("Pousos simultaneos! Priorizando o de maior tempo de voo\n");
+                            if(aeroporto.pousos[aux].tempo_voo > aeroporto.pousos[i].tempo_voo)
+                            {
+                                aeroporto.pousos[i].chegada_partida++;
+                                aeroporto.pousos[i].tempo_voo++;
+                                printf("Voo %d tera que aguardar pouso de prioridade maior!\n", aeroporto.pousos[i].voo_id);
+                                aux = i;
+                            }
+                            else
+                            {
+                                aeroporto.pousos[aux].chegada_partida++;
+                                aeroporto.pousos[aux].tempo_voo++;
+                                printf("Voo %d tera que aguardar pouso de prioridade maior!\n", aeroporto.pousos[i].voo_id);
+                            }
+                            i = 0;
+                        }
+                    }
                 }
                 break;
             case 2:
                 if(rank == origem)
                     tabela(&aeroporto);
+		MPI_Barrier(MPI_COMM_WORLD); //para não atrapalhar o ptint de outros processos que não seja o 0
                 break;
             case 3:
                 if(rank == 0)
@@ -127,7 +223,7 @@ void menu()
 {
     printf("Selecione uma opcao\n");
     printf("1 - Informar dados do voo\n");
-    printf("2 - Consultar tabela aeroporto\n");
+    printf("2 - Consultar decolagens/pousos agendados para hoje\n");
     printf("3 - Sair\n");
 }
 
@@ -140,13 +236,12 @@ void tabela(const Aeroporto* aero){
     printf("| Pousos\t| Origem\t| Chegada\t| Tempo\t|\n");
     printf("---------------------------------------------------------\n");
     for(int i = 0; i < (int)aero->pousos.size(); i++){
-        printf("| %d\t\t| %d\t\t| %d\t\t| %d\t|\n", aero->pousos[i].voo_id, aero->pousos[i].origem, aero->pousos[i].chegada_partida, aero->pousos[i].tempo_voo);
+        printf("| %03d\t\t| %d\t\t| %d\t\t| %d\t|\n", aero->pousos[i].voo_id, aero->pousos[i].origem, aero->pousos[i].chegada_partida, aero->pousos[i].tempo_voo);
     }
     printf("---------------------------------------------------------\n");
     printf("| Decolagens\t| Destino\t| Partida\t| Tempo\t|\n");
     for(int i = 0; i < (int)aero->decolagens.size(); i++){
-        printf("| %d\t\t| %d\t\t| %d\t\t| %d\t|\n", aero->decolagens[i].voo_id, aero->decolagens[i].destino, aero->decolagens[i].chegada_partida, aero->decolagens[i].tempo_voo);
+        printf("| %03d\t\t| %d\t\t| %d\t\t| %d\t|\n", aero->decolagens[i].voo_id, aero->decolagens[i].destino, aero->decolagens[i].chegada_partida, aero->decolagens[i].tempo_voo);
     }
     printf("---------------------------------------------------------\n");
 }
-
