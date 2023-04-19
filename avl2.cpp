@@ -12,6 +12,7 @@
 
 //inclusão de bibliotecas
 #include <stdio.h>
+#include <time.h>
 #include <stdlib.h>
 #include <vector>
 #include "mpi.h"
@@ -46,6 +47,8 @@ int main(int argc, char* argv[])
     int opt = -1;
     Voo voo;
     int aux;
+    Voo aux;
+    
     int origem, destino, chegada_partida, tempo_voo;
 
     MPI_Status status;
@@ -58,7 +61,7 @@ int main(int argc, char* argv[])
 
     while(opt != 3)
     {
-	destino = -1;
+	      destino = -1;
         if(rank == 0)
         {
             menu();
@@ -73,13 +76,14 @@ int main(int argc, char* argv[])
                }
             }
         }
-	MPI_Bcast(&opt, 1, MPI_INT, 0, MPI_COMM_WORLD);
+	    MPI_Bcast(&opt, 1, MPI_INT, 0, MPI_COMM_WORLD);
         MPI_Bcast(&origem, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
         switch(opt)
         {
             case 1:
                 if(rank == 0)
+
                 {
                     do
                     {
@@ -204,7 +208,9 @@ int main(int argc, char* argv[])
             case 2:
                 if(rank == origem)
                     tabela(&aeroporto);
+
 		MPI_Barrier(MPI_COMM_WORLD); //para não atrapalhar o ptint de outros processos que não seja o 0
+
                 break;
             case 3:
                 if(rank == 0)
